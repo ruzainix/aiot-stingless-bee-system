@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NESTR Hive Intelligence Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="hero-card">
+      <div>
+        <p class="eyebrow">AIoT Smart Stingless Beehive Intelligence System</p>
+        <h1>NESTR</h1>
+        <p class="tagline">From Hive Data to Harvest Intelligence</p>
+      </div>
+      <div class="bee-mark">🐝</div>
+    </section>
+
+    <section class="grid">
+      <article class="metric-card">
+        <span>Hive Weight</span>
+        <strong id="weight">-- kg</strong>
+      </article>
+      <article class="metric-card">
+        <span>Temperature</span>
+        <strong id="temperature">-- °C</strong>
+      </article>
+      <article class="metric-card">
+        <span>Humidity</span>
+        <strong id="humidity">-- %</strong>
+      </article>
+      <article class="metric-card highlight">
+        <span>Hive Status</span>
+        <strong id="status">Loading</strong>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>Condition Detection</h2>
+      <ul id="alerts"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>Harvest Readiness</h2>
+      <div class="progress-wrap">
+        <div id="harvestBar" class="progress-bar"></div>
+      </div>
+      <p id="harvestText">Waiting for hive data...</p>
+    </section>
+
+    <section class="panel">
+      <h2>Latest Timestamp</h2>
+      <p id="timestamp">No timestamp received yet.</p>
+    </section>
+
+    <footer>
+      Prototype dashboard for Final Year Project demonstration.
+    </footer>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
