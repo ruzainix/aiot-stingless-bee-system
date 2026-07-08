@@ -11,9 +11,11 @@ import logging
 import math
 import os
 import re
+import sys
 import threading
 from datetime import datetime, timezone
 from functools import wraps
+from pathlib import Path
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -22,6 +24,9 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 import firebase_admin
 from firebase_admin import credentials, db
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from nestr_common import classify_conditions as classify_hive_conditions, coerce_float
 
 load_dotenv()
 
@@ -130,37 +135,11 @@ def init_firebase() -> None:
 
 def classify_conditions(data: Dict[str, Any]) -> Dict[str, Any]:
     """Prototype condition detection rules for stingless beehive monitoring."""
-    temp = float(data.get("temperature_c", 0))
-    humidity = float(data.get("humidity_percent", 0))
-    weight = float(data.get("weight_kg", 0))
-
-    alerts = []
-    status = "Normal"
-
-    if temp < 24:
-        alerts.append("Temperature Low")
-    elif temp > 34:
-        alerts.append("Temperature High")
-
-    if humidity < 50:
-        alerts.append("Humidity Low")
-    elif humidity > 85:
-        alerts.append("Humidity High")
-
-    if weight >= 8:
-        alerts.append("Harvest Potential")
-
-    if alerts:
-        status = "Attention Required"
-
-    readiness_percent = max(0.0, min(round((weight / 8) * 100, 2), 100))
-
-    return {
-        "status": status,
-        "alerts": alerts,
-        "harvest_ready": weight >= 8,
-        "readiness_percent": readiness_percent,
-    }
+    return classify_hive_conditions(
+        temperature_c=data.get("temperature_c", 0),
+        humidity_percent=data.get("humidity_percent", 0),
+        weight_kg=data.get("weight_kg", 0),
+    )
 
 
 def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -225,9 +204,9 @@ def receive_hive_data():
 
     record = {
         "device_id": device_id,
-        "weight_kg": float(payload["weight_kg"]),
-        "temperature_c": float(payload["temperature_c"]),
-        "humidity_percent": float(payload["humidity_percent"]),
+        "weight_kg": coerce_float(payload["weight_kg"]),
+        "temperature_c": coerce_float(payload["temperature_c"]),
+        "humidity_percent": coerce_float(payload["humidity_percent"]),
         "timestamp": now,
     }
     record["condition"] = classify_conditions(record)
