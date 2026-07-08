@@ -7,8 +7,10 @@ Run:
   python app.py
 """
 
+import logging
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Dict
@@ -16,10 +18,14 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 import firebase_admin
 from firebase_admin import credentials, db
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("nestr.gateway")
 
 app = Flask(__name__)
 
@@ -68,19 +74,57 @@ def require_api_key(view):
     return wrapper
 
 
+class GatewayError(Exception):
+    """Raised when the gateway cannot fulfil a request.
+
+    Carries an HTTP status code so the error surfaces to the client as a
+    structured JSON response instead of an opaque 500 with a stack trace.
+    """
+
+    def __init__(self, message: str, status_code: int = 500) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+_firebase_lock = threading.Lock()
+
+
 def init_firebase() -> None:
-    """Initialize Firebase Admin SDK once."""
+    """Initialize Firebase Admin SDK once.
+
+    Thread-safe: a lock guards the check-then-init so concurrent requests under
+    threaded Flask don't both call initialize_app. Raises GatewayError (503)
+    when the service is misconfigured or the SDK cannot connect, with a generic
+    client-facing message (details are logged server-side, never returned).
+    """
     if firebase_admin._apps:
         return
 
-    if not FIREBASE_DATABASE_URL:
-        raise RuntimeError("FIREBASE_DATABASE_URL is missing in .env")
+    with _firebase_lock:
+        if firebase_admin._apps:
+            return
 
-    if not os.path.exists(SERVICE_ACCOUNT_PATH):
-        raise RuntimeError(f"Firebase service account file not found: {SERVICE_ACCOUNT_PATH}")
+        if not FIREBASE_DATABASE_URL:
+            logger.error("FIREBASE_DATABASE_URL is missing in .env")
+            raise GatewayError("Gateway is not configured correctly", status_code=503)
 
-    cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
-    firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DATABASE_URL})
+        if not os.path.exists(SERVICE_ACCOUNT_PATH):
+            logger.error("Firebase service account file not found: %s", SERVICE_ACCOUNT_PATH)
+            raise GatewayError("Gateway is not configured correctly", status_code=503)
+
+        try:
+            cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+            firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DATABASE_URL})
+        except ValueError:
+            # Another initializer won the race; the app already exists.
+            if firebase_admin._apps:
+                return
+            logger.exception("Failed to initialize Firebase")
+            raise GatewayError("Failed to initialize Firebase gateway", status_code=503)
+        except Exception as exc:
+            logger.exception("Failed to initialize Firebase")
+            raise GatewayError("Failed to initialize Firebase gateway", status_code=503) from exc
 
 
 def classify_conditions(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -135,6 +179,22 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"valid": True}
 
 
+@app.errorhandler(GatewayError)
+def handle_gateway_error(error: GatewayError):
+    return jsonify({"error": error.message}), error.status_code
+
+
+@app.errorhandler(HTTPException)
+def handle_http_error(error: HTTPException):
+    return jsonify({"error": error.description}), error.code
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error: Exception):
+    logger.exception("Unhandled error while processing request")
+    return jsonify({"error": "Internal server error"}), 500
+
+
 @app.route("/", methods=["GET"])
 def health_check():
     return jsonify({"service": "NESTR Gateway", "status": "running"})
@@ -162,11 +222,21 @@ def receive_hive_data():
     }
     record["condition"] = classify_conditions(record)
 
-    readings_ref = db.reference(f"hives/{device_id}/readings")
-    new_record = readings_ref.push(record)
+    try:
+        readings_ref = db.reference(f"hives/{device_id}/readings")
+        new_record = readings_ref.push(record)
+    except Exception as exc:
+        logger.exception("Failed to write hive data for device %s", device_id)
+        raise GatewayError("Failed to store hive data", status_code=502) from exc
 
-    latest_ref = db.reference(f"hives/{device_id}/latest")
-    latest_ref.set(record)
+    # 'latest' is a derived snapshot of the reading just stored above. If this
+    # write fails the reading is still durably saved and the snapshot refreshes
+    # on the next reading, so we log it rather than failing the request (which
+    # would prompt a retry and duplicate the history entry).
+    try:
+        db.reference(f"hives/{device_id}/latest").set(record)
+    except Exception:
+        logger.exception("Failed to update latest snapshot for device %s", device_id)
 
     return jsonify({
         "message": "Data saved successfully",
@@ -180,7 +250,11 @@ def get_latest(device_id: str):
     if not is_valid_device_id(device_id):
         return jsonify({"error": "Invalid device_id format"}), 400
     init_firebase()
-    data = db.reference(f"hives/{device_id}/latest").get()
+    try:
+        data = db.reference(f"hives/{device_id}/latest").get()
+    except Exception as exc:
+        logger.exception("Failed to read latest data for device %s", device_id)
+        raise GatewayError("Failed to read hive data", status_code=502) from exc
     return jsonify(data or {})
 
 
@@ -194,7 +268,11 @@ def get_history(device_id: str):
         return jsonify({"error": "limit must be an integer"}), 400
     limit = max(1, min(limit, MAX_HISTORY_LIMIT))
     init_firebase()
-    raw = db.reference(f"hives/{device_id}/readings").order_by_key().limit_to_last(limit).get()
+    try:
+        raw = db.reference(f"hives/{device_id}/readings").order_by_key().limit_to_last(limit).get()
+    except Exception as exc:
+        logger.exception("Failed to read history for device %s", device_id)
+        raise GatewayError("Failed to read hive history", status_code=502) from exc
     if not raw:
         return jsonify([])
     records = list(raw.values())
