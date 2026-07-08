@@ -1,21 +1,24 @@
-# Secrets / credentials
+# Secrets and credentials
 .env
+.env.*
+!.env.example
 raspberry_pi_gateway/.env
 serviceAccountKey.json
 raspberry_pi_gateway/serviceAccountKey.json
+*serviceAccount*.json
 *.pem
 *.key
 
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 venv/
 .venv/
 env/
-*.egg-info/
 
 # OS / editor
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
+.vscode/

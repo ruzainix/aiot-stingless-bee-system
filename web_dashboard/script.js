@@ -63,7 +63,16 @@ async function fetchLatest() {
   try {
     const response = await fetch(`${API_BASE}/api/hive-data/${DEVICE_ID}/latest`);
     if (!response.ok) {
-      throw new Error(`Gateway responded with HTTP ${response.status}`);
+      let detail = `HTTP ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body && body.error) {
+          detail = body.error;
+        }
+      } catch (parseError) {
+        // Response body was not JSON; keep the HTTP status as the detail.
+      }
+      throw new Error(`Gateway returned an error: ${detail}`);
     }
     const data = await response.json();
     if (!data || Object.keys(data).length === 0) {
