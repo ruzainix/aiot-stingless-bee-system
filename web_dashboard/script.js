@@ -48,6 +48,17 @@ function updateDashboard(data) {
   );
 }
 
+function showNoData() {
+  setText("weight", "-- kg");
+  setText("temperature", "-- °C");
+  setText("humidity", "-- %");
+  setText("status", "No Data");
+  setText("timestamp", "No readings received yet.");
+  document.getElementById("alerts").innerHTML = "";
+  document.getElementById("harvestBar").style.width = "0%";
+  setText("harvestText", "Waiting for the first hive reading...");
+}
+
 async function fetchLatest() {
   try {
     const response = await fetch(`${API_BASE}/api/hive-data/${DEVICE_ID}/latest`);
@@ -55,6 +66,10 @@ async function fetchLatest() {
       throw new Error(`Gateway responded with HTTP ${response.status}`);
     }
     const data = await response.json();
+    if (!data || Object.keys(data).length === 0) {
+      showNoData();
+      return;
+    }
     updateDashboard(data);
   } catch (error) {
     console.error(error);

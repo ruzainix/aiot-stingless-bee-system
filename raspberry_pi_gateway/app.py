@@ -9,6 +9,7 @@ Run:
 
 import math
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -31,6 +32,10 @@ FLASK_DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
 
 DEFAULT_HISTORY_LIMIT = 50
 MAX_HISTORY_LIMIT = 1000
+
+# Firebase RTDB keys forbid . $ # [ ] / and control chars. Restrict device_id to a
+# safe subset so it can be interpolated into database paths without escaping.
+DEVICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 def init_firebase() -> None:
@@ -88,6 +93,12 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     missing = [key for key in required if key not in payload]
     if missing:
         return {"valid": False, "error": "Missing fields", "missing": missing}
+
+    if not DEVICE_ID_PATTERN.match(str(payload["device_id"])):
+        return {
+            "valid": False,
+            "error": "device_id must be 1-128 chars of letters, digits, '-' or '_'",
+        }
 
     numeric_fields = ["weight_kg", "temperature_c", "humidity_percent"]
     try:
@@ -147,6 +158,8 @@ def receive_hive_data():
 
 @app.route("/api/hive-data/<device_id>/latest", methods=["GET"])
 def get_latest(device_id: str):
+    if not DEVICE_ID_PATTERN.match(device_id):
+        return jsonify({"error": "Invalid device_id"}), 400
     init_firebase()
     data = db.reference(f"hives/{device_id}/latest").get()
     return jsonify(data or {})
@@ -154,6 +167,8 @@ def get_latest(device_id: str):
 
 @app.route("/api/hive-data/<device_id>/history", methods=["GET"])
 def get_history(device_id: str):
+    if not DEVICE_ID_PATTERN.match(device_id):
+        return jsonify({"error": "Invalid device_id"}), 400
     init_firebase()
     limit_arg = request.args.get("limit", str(DEFAULT_HISTORY_LIMIT))
     try:
