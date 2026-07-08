@@ -85,6 +85,29 @@ class TestValidatePayload:
         assert result["valid"] is False
         assert result["error"] == "Sensor values must be numeric"
 
+    def test_invalid_device_id_rejected(self):
+        payload = {
+            "device_id": "bad id/../etc",
+            "weight_kg": 5.0,
+            "temperature_c": 28,
+            "humidity_percent": 65,
+        }
+        result = gateway.validate_payload(payload)
+        assert result["valid"] is False
+        assert result["error"] == "Invalid device_id format"
+
+
+class TestIsValidDeviceId:
+    @pytest.mark.parametrize("device_id", ["hive-1", "NESTR_HIVE_001", "abc123", "A" * 64])
+    def test_accepts_safe_ids(self, device_id):
+        assert gateway.is_valid_device_id(device_id) is True
+
+    @pytest.mark.parametrize(
+        "device_id", ["", "has space", "path/traversal", "../etc", "A" * 65, "emoji😀"]
+    )
+    def test_rejects_unsafe_ids(self, device_id):
+        assert gateway.is_valid_device_id(device_id) is False
+
 
 # ---------------------------------------------------------------------------
 # Firebase initialization
@@ -227,6 +250,12 @@ def test_get_latest_returns_empty_when_missing(client):
     assert response.get_json() == {}
 
 
+def test_get_latest_invalid_device_id(client):
+    response = client.get("/api/hive-data/bad%20id/latest")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid device_id format"
+
+
 def test_get_history_returns_records(client):
     client.store["get"] = {"k1": {"weight_kg": 5.0}, "k2": {"weight_kg": 6.0}}
     response = client.get("/api/hive-data/hive-1/history?limit=2")
@@ -239,3 +268,58 @@ def test_get_history_empty(client):
     response = client.get("/api/hive-data/hive-1/history")
     assert response.status_code == 200
     assert response.get_json() == []
+
+
+def test_get_history_invalid_device_id(client):
+    response = client.get("/api/hive-data/bad%20id/history")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid device_id format"
+
+
+def test_get_history_non_integer_limit(client):
+    response = client.get("/api/hive-data/hive-1/history?limit=abc")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "limit must be an integer"
+
+
+def test_get_history_limit_clamped_to_max(client):
+    client.store["get"] = {}
+    client.get(f"/api/hive-data/hive-1/history?limit={gateway.MAX_HISTORY_LIMIT + 100}")
+    assert client.store["limit"] == gateway.MAX_HISTORY_LIMIT
+
+
+# ---------------------------------------------------------------------------
+# API key authentication
+# ---------------------------------------------------------------------------
+def _valid_payload():
+    return {
+        "device_id": "hive-1",
+        "weight_kg": 9.0,
+        "temperature_c": 30,
+        "humidity_percent": 70,
+    }
+
+
+def test_api_key_not_required_when_unset(client, monkeypatch):
+    monkeypatch.setattr(gateway, "API_KEY", "")
+    response = client.post("/api/hive-data", json=_valid_payload())
+    assert response.status_code == 201
+
+
+def test_api_key_rejects_missing_or_wrong_key(client, monkeypatch):
+    monkeypatch.setattr(gateway, "API_KEY", "secret")
+    missing = client.post("/api/hive-data", json=_valid_payload())
+    assert missing.status_code == 401
+    assert missing.get_json()["error"] == "Unauthorized"
+    wrong = client.post(
+        "/api/hive-data", json=_valid_payload(), headers={"X-API-Key": "nope"}
+    )
+    assert wrong.status_code == 401
+
+
+def test_api_key_accepts_correct_key(client, monkeypatch):
+    monkeypatch.setattr(gateway, "API_KEY", "secret")
+    response = client.post(
+        "/api/hive-data", json=_valid_payload(), headers={"X-API-Key": "secret"}
+    )
+    assert response.status_code == 201
