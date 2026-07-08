@@ -8,6 +8,7 @@ Run:
 """
 
 import logging
+import math
 import os
 import re
 import threading
@@ -152,11 +153,13 @@ def classify_conditions(data: Dict[str, Any]) -> Dict[str, Any]:
     if alerts:
         status = "Attention Required"
 
+    readiness_percent = max(0.0, min(round((weight / 8) * 100, 2), 100))
+
     return {
         "status": status,
         "alerts": alerts,
         "harvest_ready": weight >= 8,
-        "readiness_percent": min(round((weight / 8) * 100, 2), 100),
+        "readiness_percent": readiness_percent,
     }
 
 
@@ -169,12 +172,19 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not is_valid_device_id(str(payload["device_id"])):
         return {"valid": False, "error": "Invalid device_id format"}
 
+    numeric_fields = ["weight_kg", "temperature_c", "humidity_percent"]
     try:
-        float(payload["weight_kg"])
-        float(payload["temperature_c"])
-        float(payload["humidity_percent"])
+        values = {field: float(payload[field]) for field in numeric_fields}
     except (TypeError, ValueError):
         return {"valid": False, "error": "Sensor values must be numeric"}
+
+    non_finite = [field for field, value in values.items() if not math.isfinite(value)]
+    if non_finite:
+        return {
+            "valid": False,
+            "error": "Sensor values must be finite numbers",
+            "invalid": non_finite,
+        }
 
     return {"valid": True}
 
