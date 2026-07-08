@@ -29,7 +29,10 @@ DEFAULT_CSV = Path(__file__).with_name("sample_hive_readings.csv")
 def load_data(csv_path: Path = DEFAULT_CSV) -> pd.DataFrame:
     """Load hive weight readings from CSV or create fallback data."""
     if csv_path.exists():
-        data = pd.read_csv(csv_path)
+        try:
+            data = pd.read_csv(csv_path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, OSError) as exc:
+            raise ValueError(f"Could not read readings from {csv_path}: {exc}") from exc
     else:
         data = pd.DataFrame({
             "day": list(range(1, 15)),
@@ -39,6 +42,9 @@ def load_data(csv_path: Path = DEFAULT_CSV) -> pd.DataFrame:
     required = {"day", "weight_kg"}
     if not required.issubset(data.columns):
         raise ValueError("CSV must contain 'day' and 'weight_kg' columns")
+
+    if data.empty:
+        raise ValueError("No hive readings available to train the model")
 
     return data
 
@@ -71,7 +77,12 @@ def estimate_harvest_day(model: LinearRegression, latest_day: int, max_future_da
 
 
 def main() -> None:
-    data = load_data()
+    try:
+        data = load_data()
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
     model = train_model(data)
 
     latest_day = int(data["day"].max())
