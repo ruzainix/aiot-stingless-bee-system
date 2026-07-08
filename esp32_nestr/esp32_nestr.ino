@@ -24,6 +24,9 @@ const char* WIFI_SSID = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* GATEWAY_URL = "http://192.168.1.100:5000/api/hive-data";
 
+// Must match API_KEY configured on the gateway. Leave empty if gateway auth is disabled.
+const char* GATEWAY_API_KEY = "";
+
 // ==============================
 // Device configuration
 // ==============================
@@ -90,6 +93,9 @@ bool sendDataToGateway(float weightKg, float temperatureC, float humidityPercent
   HTTPClient http;
   http.begin(GATEWAY_URL);
   http.addHeader("Content-Type", "application/json");
+  if (strlen(GATEWAY_API_KEY) > 0) {
+    http.addHeader("X-API-Key", GATEWAY_API_KEY);
+  }
 
   String payload = "{";
   payload += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
