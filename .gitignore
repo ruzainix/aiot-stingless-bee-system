@@ -1,9 +1,19 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+serviceAccountKey.json
+*serviceAccount*.json
+*.pem
+*.key
+
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
-.env
+env/
 
 # Testing
 .coverage
@@ -11,5 +21,7 @@ venv/
 htmlcov/
 .pytest_cache/
 
-# Secrets
-serviceAccountKey.json
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
