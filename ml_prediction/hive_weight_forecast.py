@@ -13,13 +13,16 @@ Important:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
-HARVEST_THRESHOLD_KG = 8.0
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from nestr_common import is_harvest_ready
+
 DEFAULT_CSV = Path(__file__).with_name("sample_hive_readings.csv")
 
 
@@ -54,7 +57,7 @@ def forecast_next_days(model: LinearRegression, start_day: int, days: int = 7) -
     future_days = pd.DataFrame({"day": list(range(start_day, start_day + days))})
     predictions = model.predict(future_days[["day"]])
     future_days["predicted_weight_kg"] = predictions.round(2)
-    future_days["harvest_ready"] = future_days["predicted_weight_kg"] >= HARVEST_THRESHOLD_KG
+    future_days["harvest_ready"] = future_days["predicted_weight_kg"].apply(is_harvest_ready)
     return future_days
 
 
@@ -62,7 +65,7 @@ def estimate_harvest_day(model: LinearRegression, latest_day: int, max_future_da
     """Estimate the day when predicted weight reaches the harvest threshold."""
     for day in range(latest_day + 1, latest_day + max_future_days + 1):
         predicted_weight = float(model.predict(pd.DataFrame({"day": [day]}))[0])
-        if predicted_weight >= HARVEST_THRESHOLD_KG:
+        if is_harvest_ready(predicted_weight):
             return day, round(predicted_weight, 2)
     return None, None
 
