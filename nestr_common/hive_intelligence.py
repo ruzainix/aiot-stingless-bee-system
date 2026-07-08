@@ -31,8 +31,8 @@ def is_harvest_ready(weight_kg: float) -> bool:
 
 
 def harvest_readiness_percent(weight_kg: float) -> float:
-    """Return harvest readiness as a percentage capped at 100."""
-    return min(round((weight_kg / HARVEST_THRESHOLD_KG) * 100, 2), 100)
+    """Return harvest readiness as a percentage clamped to the 0-100 range."""
+    return max(0.0, min(round((weight_kg / HARVEST_THRESHOLD_KG) * 100, 2), 100))
 
 
 def classify_conditions(

@@ -8,6 +8,7 @@ Run:
 """
 
 import logging
+import math
 import os
 import re
 import sys
@@ -25,7 +26,7 @@ import firebase_admin
 from firebase_admin import credentials, db
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from nestr_common import classify_conditions, coerce_float
+from nestr_common import classify_conditions as classify_hive_conditions, coerce_float
 
 load_dotenv()
 
@@ -132,6 +133,15 @@ def init_firebase() -> None:
             raise GatewayError("Failed to initialize Firebase gateway", status_code=503) from exc
 
 
+def classify_conditions(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Prototype condition detection rules for stingless beehive monitoring."""
+    return classify_hive_conditions(
+        temperature_c=data.get("temperature_c", 0),
+        humidity_percent=data.get("humidity_percent", 0),
+        weight_kg=data.get("weight_kg", 0),
+    )
+
+
 def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     required = ["device_id", "weight_kg", "temperature_c", "humidity_percent"]
     missing = [key for key in required if key not in payload]
@@ -141,12 +151,19 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not is_valid_device_id(str(payload["device_id"])):
         return {"valid": False, "error": "Invalid device_id format"}
 
+    numeric_fields = ["weight_kg", "temperature_c", "humidity_percent"]
     try:
-        float(payload["weight_kg"])
-        float(payload["temperature_c"])
-        float(payload["humidity_percent"])
+        values = {field: float(payload[field]) for field in numeric_fields}
     except (TypeError, ValueError):
         return {"valid": False, "error": "Sensor values must be numeric"}
+
+    non_finite = [field for field, value in values.items() if not math.isfinite(value)]
+    if non_finite:
+        return {
+            "valid": False,
+            "error": "Sensor values must be finite numbers",
+            "invalid": non_finite,
+        }
 
     return {"valid": True}
 
@@ -192,11 +209,7 @@ def receive_hive_data():
         "humidity_percent": coerce_float(payload["humidity_percent"]),
         "timestamp": now,
     }
-    record["condition"] = classify_conditions(
-        temperature_c=record["temperature_c"],
-        humidity_percent=record["humidity_percent"],
-        weight_kg=record["weight_kg"],
-    )
+    record["condition"] = classify_conditions(record)
 
     try:
         readings_ref = db.reference(f"hives/{device_id}/readings")

@@ -2,7 +2,9 @@
 .env
 .env.*
 !.env.example
+raspberry_pi_gateway/.env
 serviceAccountKey.json
+raspberry_pi_gateway/serviceAccountKey.json
 *serviceAccount*.json
 *.pem
 *.key
@@ -11,11 +13,18 @@ serviceAccountKey.json
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
 venv/
+.venv/
 env/
+
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
 
 # OS / editor
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
