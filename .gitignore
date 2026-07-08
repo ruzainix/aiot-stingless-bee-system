@@ -17,6 +17,12 @@ venv/
 .venv/
 env/
 
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
 # OS / editor
 .DS_Store
 Thumbs.db
