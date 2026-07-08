@@ -1,0 +1,8 @@
+# Test dependencies for the Python modules.
+# Install runtime deps first:
+#   pip install -r ml_prediction/requirements.txt -r raspberry_pi_gateway/requirements.txt
+# Then:
+#   pip install -r requirements-dev.txt
+#   pytest
+pytest==9.1.1
+pytest-cov==7.1.0
