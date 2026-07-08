@@ -1,0 +1,21 @@
+# Secrets / credentials
+.env
+raspberry_pi_gateway/.env
+serviceAccountKey.json
+raspberry_pi_gateway/serviceAccountKey.json
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -89,6 +89,8 @@ bool sendDataToGateway(float weightKg, float temperatureC, float humidityPercent
 
   HTTPClient http;
   http.begin(GATEWAY_URL);
+  http.setConnectTimeout(5000);
+  http.setTimeout(5000);
   http.addHeader("Content-Type", "application/json");
 
   String payload = "{";

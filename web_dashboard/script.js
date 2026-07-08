@@ -38,7 +38,7 @@ function updateDashboard(data) {
     });
   }
 
-  const readiness = Number(condition.readiness_percent || Math.min((weight / 8) * 100, 100));
+  const readiness = Number(condition.readiness_percent ?? Math.min((weight / 8) * 100, 100));
   document.getElementById("harvestBar").style.width = `${readiness}%`;
   setText(
     "harvestText",
@@ -51,6 +51,9 @@ function updateDashboard(data) {
 async function fetchLatest() {
   try {
     const response = await fetch(`${API_BASE}/api/hive-data/${DEVICE_ID}/latest`);
+    if (!response.ok) {
+      throw new Error(`Gateway responded with HTTP ${response.status}`);
+    }
     const data = await response.json();
     updateDashboard(data);
   } catch (error) {

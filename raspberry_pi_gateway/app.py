@@ -7,6 +7,7 @@ Run:
   python app.py
 """
 
+import math
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -26,6 +27,10 @@ FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL", "")
 SERVICE_ACCOUNT_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "serviceAccountKey.json")
 FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
 FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
+FLASK_DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
+
+DEFAULT_HISTORY_LIMIT = 50
+MAX_HISTORY_LIMIT = 1000
 
 
 def init_firebase() -> None:
@@ -68,11 +73,13 @@ def classify_conditions(data: Dict[str, Any]) -> Dict[str, Any]:
     if alerts:
         status = "Attention Required"
 
+    readiness_percent = max(0.0, min(round((weight / 8) * 100, 2), 100))
+
     return {
         "status": status,
         "alerts": alerts,
         "harvest_ready": weight >= 8,
-        "readiness_percent": min(round((weight / 8) * 100, 2), 100),
+        "readiness_percent": readiness_percent,
     }
 
 
@@ -82,12 +89,19 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if missing:
         return {"valid": False, "error": "Missing fields", "missing": missing}
 
+    numeric_fields = ["weight_kg", "temperature_c", "humidity_percent"]
     try:
-        float(payload["weight_kg"])
-        float(payload["temperature_c"])
-        float(payload["humidity_percent"])
+        values = {field: float(payload[field]) for field in numeric_fields}
     except (TypeError, ValueError):
         return {"valid": False, "error": "Sensor values must be numeric"}
+
+    non_finite = [field for field, value in values.items() if not math.isfinite(value)]
+    if non_finite:
+        return {
+            "valid": False,
+            "error": "Sensor values must be finite numbers",
+            "invalid": non_finite,
+        }
 
     return {"valid": True}
 
@@ -141,7 +155,15 @@ def get_latest(device_id: str):
 @app.route("/api/hive-data/<device_id>/history", methods=["GET"])
 def get_history(device_id: str):
     init_firebase()
-    limit = int(request.args.get("limit", 50))
+    limit_arg = request.args.get("limit", str(DEFAULT_HISTORY_LIMIT))
+    try:
+        limit = int(limit_arg)
+    except (TypeError, ValueError):
+        return jsonify({"error": "'limit' must be an integer"}), 400
+    if limit <= 0:
+        return jsonify({"error": "'limit' must be a positive integer"}), 400
+    limit = min(limit, MAX_HISTORY_LIMIT)
+
     raw = db.reference(f"hives/{device_id}/readings").order_by_key().limit_to_last(limit).get()
     if not raw:
         return jsonify([])
@@ -150,4 +172,4 @@ def get_history(device_id: str):
 
 
 if __name__ == "__main__":
-    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=True)
+    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG)
